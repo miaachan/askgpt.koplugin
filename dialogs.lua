@@ -82,12 +82,6 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
 
   buttons = {
     {
-      text = _("Cancel"),
-      callback = function()
-        UIManager:close(input_dialog)
-      end
-    },
-    {
       text = _("Ask"),
       callback = function()
         local question = input_dialog:getInputText()
@@ -160,6 +154,13 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
       end
     })
   end
+
+  table.insert(buttons, {
+    text = _("Cancel"),
+    callback = function()
+      UIManager:close(input_dialog)
+    end
+  })
 
   input_dialog = InputDialog:new{
     title = _("Ask a question about the highlighted text"),
