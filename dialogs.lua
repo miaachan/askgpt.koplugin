@@ -157,6 +157,7 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
 
   table.insert(buttons, {
     text = _("Cancel"),
+    id = "close",
     callback = function()
       UIManager:close(input_dialog)
     end
