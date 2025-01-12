@@ -84,12 +84,20 @@ local function executeCustomPrompt(highlightedText, prompt, message_history)
     },
     custom_message
   }
-  local answer = queryChatGPT(custom_history)
+  local success, result = queryChatGPT(custom_history)
+
+  if not success then
+    UIManager:show(InfoMessage:new{
+      text = result,
+      timeout = 3,
+    })
+    return
+  end
 
   table.insert(message_history, custom_message)
   table.insert(message_history, {
     role = "assistant",
-    content = answer
+    content = result
   })
 
   local result_text = createResultText(highlightedText, message_history)
@@ -114,7 +122,17 @@ local function translateText(text, target_language)
     },
     translation_message
   }
-  return queryChatGPT(translation_history)
+
+  local success, result = queryChatGPT(translation_history)
+  if not success then
+    UIManager:show(InfoMessage:new{
+      text = result,
+      timeout = 3,
+    })
+    return
+  end
+
+  return result
 end
 
 local function showChatGPTDialog(ui, highlightedText, message_history)
