@@ -243,24 +243,28 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
     }
   }
 
-  if CONFIGURATION and CONFIGURATION.features and CONFIGURATION.features.translate_to then
-    table.insert(buttons, {
-      text = _("Translate"),
-      callback = function()
-        translateText(highlightedText, CONFIGURATION.features.translate_to)
-      end
-    })
-  end
+  if CONFIGURATION then
 
-  if CONFIGURATION and CONFIGURATION.prompts then
-    table.insert(buttons, {
-      text = _("Custom Prompt"),
-      callback = function()
-        showPromptSelectionDialog(function(selected_prompt)
-          executeCustomPrompt(highlightedText, selected_prompt, message_history)
-        end)
-      end
-    })
+    if CONFIGURATION.prompts then
+      table.insert(buttons, {
+        text = _("Custom Prompt"),
+        callback = function()
+          showPromptSelectionDialog(function(selected_prompt)
+            executeCustomPrompt(highlightedText, selected_prompt, message_history)
+          end)
+        end
+      })
+    end
+
+    if CONFIGURATION.features and CONFIGURATION.features.translate_to then
+      table.insert(buttons, {
+        text = _("Translate"),
+        callback = function()
+          translateText(highlightedText, CONFIGURATION.features.translate_to)
+        end
+      })
+    end
+
   end
 
   table.insert(buttons, {
