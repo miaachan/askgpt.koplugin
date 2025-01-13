@@ -16,12 +16,24 @@ else
   print("configuration.lua not found, skipping...")
 end
 
+local function _queryChatGPT(message_history, Ok, Err)
+  local success, result = queryChatGPT(message_history)
+  if success then
+    Ok(result)
+  else
+    Err(result)
+  end
+end
+
+local function showInfoMessage(text, timeout)
+  UIManager:show(InfoMessage:new{
+    text = text,
+    timeout = timeout or 3
+  })
+end
+
 local function showLoadingDialog()
-  local loading = InfoMessage:new{
-    text = _("Loading..."),
-    timeout = 0.1
-  }
-  UIManager:show(loading)
+  showInfoMessage(_("Loading..."), 0.1)
 end
 
 local function createResultText(highlightedText, message_history)
@@ -38,11 +50,36 @@ local function createResultText(highlightedText, message_history)
   return result_text
 end
 
-local function showPromptSelectionDialog(callback)
+local function handleNewQuestion(chatgpt_viewer, question, highlightedText, message_history)
+  table.insert(message_history, {
+    role = "user",
+    content = question
+  })
+
+  local success, result = queryChatGPT(message_history)
+
+  if not success then
+    UIManager:show(InfoMessage:new{
+      text = result, -- Show error message
+      timeout = 3,
+    })
+    return
+  end
+
+  table.insert(message_history, {
+    role = "assistant",
+    content = result
+  })
+
+  local result_text = createResultText(highlightedText, message_history)
+  chatgpt_viewer:update(result_text)
+end
+
+local function showPromptSelectionDialog(callback, prompts)
   local prompt_buttons = {}
   local prompt_dialog
 
-  for _i, prompt in ipairs(CONFIGURATION.prompts) do
+  for _i, prompt in ipairs(prompts) do
     table.insert(prompt_buttons, {
       text = _(prompt.name),
       callback = function()
@@ -72,53 +109,39 @@ local function showPromptSelectionDialog(callback)
   UIManager:show(prompt_dialog)
 end
 
-local function executeCustomPrompt(highlightedText, prompt, message_history)
-  local custom_message = {
+local function executeCustomPrompt(highlightedText, prompt, message_history, handleNewQuestionWrapper)
+  table.insert(message_history, {
     role = "user",
     content = prompt .. ": " .. highlightedText
-  }
-  local custom_history = {
-    {
-      role = "system",
-      content = "You are a helpful assistant. Execute the task as described in the prompt."
-    },
-    custom_message
-  }
-  local success, result = queryChatGPT(custom_history)
-
-  if not success then
-    UIManager:show(InfoMessage:new{
-      text = result,
-      timeout = 3,
-    })
-    return
-  end
-
-  table.insert(message_history, custom_message)
-  table.insert(message_history, {
-    role = "assistant",
-    content = result
   })
 
-  local result_text = createResultText(highlightedText, message_history)
-  local chatgpt_viewer = ChatGPTViewer:new {
-    title = _("Custom Prompt Response"),
-    text = result_text,
-    onAskQuestion = handleNewQuestion
-  }
+  _queryChatGPT(message_history, function (result)
+    table.insert(message_history, {
+      role = "assistant",
+      content = result
+    })
+    local result_text = createResultText(highlightedText, message_history)
+    local chatgpt_viewer = ChatGPTViewer:new {
+      title = _("Custom Prompt Response"),
+      text = result_text,
+      onAskQuestion = handleNewQuestionWrapper
+    }
+    UIManager:show(chatgpt_viewer)
+  end, function(err)
+    showInfoMessage(err)
+  end)
 
-  UIManager:show(chatgpt_viewer)
 end
 
-local function translateText(text, target_language)
+local function translateText(highlightedText, target_language, message_history, handleNewQuestionWrapper)
   showLoadingDialog()
 
   UIManager:scheduleIn(0.1, function()
     local translation_message = {
       role = "user",
-      content = "Translate the following text to " .. target_language .. ": " .. text
+      content = "Translate the following text to " .. target_language .. ": " .. highlightedText
     }
-    local translation_history = {
+    local history = {
       {
         role = "system",
         content = "You are a helpful translation assistant. Provide direct translations without additional commentary."
@@ -126,34 +149,26 @@ local function translateText(text, target_language)
       translation_message
     }
 
-    local success, result = queryChatGPT(translation_history)
-
-    if not success then
-      UIManager:show(InfoMessage:new{
-        text = result,
-        timeout = 3,
+    _queryChatGPT(history, function(result) 
+      table.insert(message_history, {
+        role = "user",
+        content = "Translate to " .. CONFIGURATION.features.translate_to .. ": " .. highlightedText
       })
-      return
-    end
-
-    table.insert(message_history, {
-      role = "user",
-      content = "Translate to " .. CONFIGURATION.features.translate_to .. ": " .. highlightedText
-    })
-
-    table.insert(message_history, {
-      role = "assistant",
-      content = result
-    })
-
-    local result_text = createResultText(highlightedText, message_history)
-    local chatgpt_viewer = ChatGPTViewer:new {
-      title = _("Translation"),
-      text = result_text,
-      onAskQuestion = handleNewQuestion
-    }
-
-    UIManager:show(chatgpt_viewer)
+  
+      table.insert(message_history, {
+        role = "assistant",
+        content = result
+      })
+      local result_text = createResultText(highlightedText, message_history)
+      local chatgpt_viewer = ChatGPTViewer:new {
+        title = _("Translation"),
+        text = result_text,
+        onAskQuestion = handleNewQuestionWrapper
+      }
+      UIManager:show(chatgpt_viewer)
+    end, function(err)
+        showInfoMessage(err)
+    end)
   end)
 end
 
@@ -166,29 +181,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
     content = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly. Answer as concisely as possible."
   }}
 
-  local function handleNewQuestion(chatgpt_viewer, question)
-    table.insert(message_history, {
-      role = "user",
-      content = question
-    })
-
-    local success, result = queryChatGPT(message_history)
-
-    if not success then
-      UIManager:show(InfoMessage:new{
-        text = result, -- Show error message
-        timeout = 3,
-      })
-      return
-    end
-
-    table.insert(message_history, {
-      role = "assistant",
-      content = result
-    })
-
-    local result_text = createResultText(highlightedText, message_history)
-    chatgpt_viewer:update(result_text)
+  local function handleNewQuestionWrapper(chatgpt_viewer, question)
+    handleNewQuestion(chatgpt_viewer, question, highlightedText, message_history)
   end
 
   buttons = {
@@ -200,44 +194,32 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
         showLoadingDialog()
 
         UIManager:scheduleIn(0.1, function()
-          local context_message = {
+          table.insert(message_history, {
             role = "user",
             content = "I'm reading something titled '" .. title .. "' by " .. author ..
               ". I have a question about the following highlighted text: " .. highlightedText
-          }
-          table.insert(message_history, context_message)
-
-          local question_message = {
+          })
+          table.insert(message_history, {
             role = "user",
             content = question
-          }
-          table.insert(message_history, question_message)
+          })
+          _queryChatGPT(message_history, function(result)
+              table.insert(message_history, {
+                  role = "assistant",
+                  content = result
+              })
+              local result_text = createResultText(highlightedText, message_history)
 
-          local success, result = queryChatGPT(message_history)
-
-          if not success then
-            UIManager:show(InfoMessage:new{
-              text = result,
-              timeout = 3,
-            })
-            return
-          end
-
-          local answer_message = {
-            role = "assistant",
-            content = result
-          }
-          table.insert(message_history, answer_message)
-
-          local result_text = createResultText(highlightedText, message_history)
-
-          local chatgpt_viewer = ChatGPTViewer:new {
-            title = _("AskGPT"),
-            text = result_text,
-            onAskQuestion = handleNewQuestion
-          }
-
-          UIManager:show(chatgpt_viewer)
+              local chatgpt_viewer = ChatGPTViewer:new {
+                title = _("AskGPT"),
+                text = result_text,
+                onAskQuestion = handleNewQuestionWrapper
+              }
+    
+              UIManager:show(chatgpt_viewer)
+          end, function(err)
+              showInfoMessage(err)
+          end)
         end)
       end
     }
@@ -250,8 +232,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
         text = _("Custom Prompt"),
         callback = function()
           showPromptSelectionDialog(function(selected_prompt)
-            executeCustomPrompt(highlightedText, selected_prompt, message_history)
-          end)
+            executeCustomPrompt(highlightedText, selected_prompt, message_history, handleNewQuestionWrapper)
+          end, CONFIGURATION.prompts)
         end
       })
     end
@@ -260,7 +242,7 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
       table.insert(buttons, {
         text = _("Translate"),
         callback = function()
-          translateText(highlightedText, CONFIGURATION.features.translate_to)
+          translateText(highlightedText, CONFIGURATION.features.translate_to, message_history, handleNewQuestionWrapper)
         end
       })
     end
