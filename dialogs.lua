@@ -1,8 +1,9 @@
-local InputDialog = require("ui/widget/inputdialog")
-local ChatGPTViewer = require("chatgptviewer")
-local UIManager = require("ui/uimanager")
-local InfoMessage = require("ui/widget/infomessage")
 local _ = require("gettext")
+local ButtonDialogTitle = require("ui/widget/buttondialogtitle")
+local ChatGPTViewer = require("chatgptviewer")
+local InfoMessage = require("ui/widget/infomessage")
+local InputDialog = require("ui/widget/inputdialog")
+local UIManager = require("ui/uimanager")
 
 local queryChatGPT = require("gpt_query")
 
@@ -80,32 +81,33 @@ local function showPromptSelectionDialog(callback, prompts)
   local prompt_dialog
 
   for _i, prompt in ipairs(prompts) do
-    table.insert(prompt_buttons, {
+    table.insert(prompt_buttons, {{
       text = _(prompt.name),
       callback = function()
-        UIManager:close(input_dialog)
+        UIManager:close(prompt_dialog)
         showLoadingDialog()
 
         UIManager:scheduleIn(0.1, function()
           callback(prompt.prompt)
         end)
       end
-    })
+    }})
   end
 
-  table.insert(prompt_buttons, {
+  table.insert(prompt_buttons, {{
     text = _("Cancel"),
     id = "close",
     callback = function()
       UIManager:close(prompt_dialog)
     end
-  })
+  }})
 
-  prompt_dialog = InputDialog:new{
+  prompt_dialog = ButtonDialogTitle:new{
     title = _("Select a custom prompt"),
-    buttons = {prompt_buttons},
-    input_type = "none"
+    title_align = "center",
+    buttons = prompt_buttons
   }
+
   UIManager:show(prompt_dialog)
 end
 
